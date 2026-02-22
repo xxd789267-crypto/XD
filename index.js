@@ -5,35 +5,72 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
-  res.send("Bot aktif ve Render üzerinde çalışıyor!");
+  res.send("Bot kanallar arası döngüde aktif!");
 });
 
 app.listen(PORT, () => {
-  console.log(`Sunucu ${PORT} portunda dinleniyor.`);
+  console.log(`Sunucu ${PORT} portunda çalışıyor.`);
 });
 
+// Environment Değişkenleri
 const token = process.env.TOKEN;
-const channelId = process.env.CHANNEL_ID;
-const message = process.env.MESSAGE;
+const channelIdsRaw = process.env.CHANNEL_IDS; // Virgülle ayrılmış ID'ler: "ID1,ID2"
+const msg1 = process.env.MESSAGE1;
+const msg2 = process.env.MESSAGE2;
 
-if (!token || !channelId || !message) {
-    console.error("HATA: Environment (gizli değişkenler) bölümünde TOKEN, CHANNEL_ID veya MESSAGE eksik!");
+// ID'leri diziye çeviriyoruz
+const channelList = channelIdsRaw ? channelIdsRaw.split(',').map(id => id.trim()) : [];
+
+let currentChannelIndex = 0;
+let isFirstMessage = true;
+
+if (!token || channelList.length === 0 || !msg1 || !msg2) {
+    console.error("HATA: TOKEN, CHANNEL_IDS, MESSAGE1 veya MESSAGE2 eksik!");
 } else {
-  
-    setInterval(sendMessage, 5000);
+    // 3 saniyede bir ana akışı başlat
+    setInterval(flow, 3000);
 }
 
-function sendMessage() {
-  axios.post(`https://discord.com/api/v9/channels/${channelId}/messages`, {
-    content: message
+// "Yazıyor..." efekti fonksiyonu
+async function sendTyping(cid) {
+  try {
+    await axios.post(`https://discord.com/api/v9/channels/${cid}/typing`, {}, {
+      headers: { "Authorization": token }
+    });
+  } catch (err) {
+    console.error(`${cid} kanalında yazıyor gösterilemedi.`);
+  }
+}
+
+async function flow() {
+  // Sıradaki kanalı ve mesajı seç
+  const currentChannelId = channelList[currentChannelIndex];
+  const currentMessage = isFirstMessage ? msg1 : msg2;
+  
+  // Önce o kanalda yazıyor göster
+  await sendTyping(currentChannelId);
+
+  // Mesajı gönder
+  axios.post(`https://discord.com/api/v9/channels/${currentChannelId}/messages`, {
+    content: currentMessage
   }, {
     headers: {
       "Authorization": token,
       "Content-Type": "application/json"
     }
   }).then(() => {
-    console.log(`✅ Mesaj başarıyla gönderildi: "${message}"`);
+    console.log(`✅ Kanal: ${currentChannelId} | Mesaj: "${currentMessage}"`);
+    
+    // Sırayı güncelle:
+    // Bir sonraki sefere diğer mesajı at
+    isFirstMessage = !isFirstMessage;
+    
+    // Bir sonraki sefere diğer kanala geç (Listenin sonuna gelince başa döner)
+    currentChannelIndex = (currentChannelIndex + 1) % channelList.length;
+    
   }).catch((err) => {
-    console.error("❌ Mesaj gönderilemedi. Hata:", err.response?.status, err.response?.data);
+    console.error("❌ Mesaj hatası:", err.response?.status);
+    // Hata olsa bile sıradaki kanala geçmesi için indexi artırabiliriz
+    currentChannelIndex = (currentChannelIndex + 1) % channelList.length;
   });
 }
