@@ -1,13 +1,16 @@
 {
-  "name": "render-discord-bot",
+  "name": "discord-human-65wpm-safe",
   "version": "1.0.0",
-  "description": "Render üzerinde çalışan Discord botu.",
+  "description": "Hata korumalı ve 65 WPM hızlı sıralı mesaj botu",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "axios": "^1.7.2"
+    "axios": "^1.6.0",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
