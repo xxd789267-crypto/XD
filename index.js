@@ -4,7 +4,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
-  res.send("100 WPM Beklemesiz Sistem Aktif!");
+  res.send("5 Saniye Aralıklı Sistem Aktif!");
 });
 
 app.listen(PORT, () => {
@@ -13,7 +13,7 @@ app.listen(PORT, () => {
 
 const TOKEN = process.env.TOKEN; 
 const CHANNEL_IDS = process.env.CHANNEL_IDS;
-const MESSAGE = process.env.MESSAGE; // Tek mesaj
+const MESSAGE = process.env.MESSAGE;
 
 if (!TOKEN || !CHANNEL_IDS || !MESSAGE) {
     console.error("HATA: TOKEN, CHANNEL_IDS veya MESSAGE eksik!");
@@ -21,34 +21,22 @@ if (!TOKEN || !CHANNEL_IDS || !MESSAGE) {
     const channelList = CHANNEL_IDS.split(",").map(c => c.trim());
     
     async function startProcess() {
-        console.log("Sistem başlatıldı: 100 WPM ve 0 Bekleme Süresi.");
+        console.log("Sistem başlatıldı: Her 5 saniyede bir mesaj gönderilecek.");
         
-        while (true) { 
+        while (true) {  
             for (const channelId of channelList) {
                 try {
-                    // 1. "Yazıyor..." animasyonu
-                    await axios.post(
-                        `https://discord.com/api/v9/channels/${channelId}/typing`,
-                        {},
-                        { headers: { "Authorization": TOKEN } }
-                    );
-
-                    // 2. 100 WPM HESABI: Harf başına 120ms bekleme
-                    const typingTime = MESSAGE.length * 120;
-                    console.log(`[${channelId}] Yazılıyor: ${Math.round(typingTime)}ms`);
-                    
-                    await new Promise(resolve => setTimeout(resolve, typingTime));
-
-                    // 3. Mesajı Gönder
+                    // Mesajı Gönder
                     await axios.post(
                         `https://discord.com/api/v9/channels/${channelId}/messages`,
                         { content: MESSAGE },
                         { headers: { "Authorization": TOKEN } }
                     );
 
-                    console.log(`[${channelId}] ✅ Mesaj Atıldı. Beklemeden sıradaki işleme geçiliyor.`);
+                    console.log(`[${channelId}] ✅ Mesaj Atıldı. 5 saniye bekleniyor...`);
                     
-                    // BEKLEME SÜRESİ KALDIRILDI - Hemen döngü başına döner
+                    // 5 Saniye Bekleme Süresi (5000 milisaniye)
+                    await new Promise(resolve => setTimeout(resolve, 5000));
 
                 } catch (err) {
                     if (err.response?.status === 429) {
