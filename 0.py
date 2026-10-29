@@ -53,4 +53,57 @@ async def sessizlik_takibi(kullanici_id, kullanici_adi, son_mesaj_zamani):
         if son_mesaj_zamanlari.get(kullanici_id) != son_mesaj_zamani:
             return
 
-        kanal = (
+        kanal = client.get_channel(BILDIRIM_KANALI_ID)
+        if kanal is None:
+            kanal = await client.fetch_channel(BILDIRIM_KANALI_ID)
+
+        await kanal.send(
+            f"**YENEN 0 ?**\n"
+            f"**Kullanıcı:** {kullanici_adi} (`{kullanici_id}`)\n"
+            f"**Süre:** sike sike ağabeyine biat etmiştir 1 dakika susmuştur 😅"
+        )
+        print(f"{kullanici_adi}: 1 dakika sessiz kaldı, bildirim gönderildi.")
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as hata:
+        print(f"Sessizlik takibi hatası: {hata}")
+
+async def hedef_mesaji(message):
+    if message.author.id not in HEDEF_KULLANICILAR:
+        return
+
+    kullanici_id = message.author.id
+    zaman = time.monotonic()
+    son_mesaj_zamanlari[kullanici_id] = zaman
+
+    eski_gorev = takip_gorevleri.get(kullanici_id)
+    if eski_gorev and not eski_gorev.done():
+        eski_gorev.cancel()
+
+    takip_gorevleri[kullanici_id] = asyncio.create_task(
+        sessizlik_takibi(kullanici_id, message.author.name, zaman)
+    )
+    print(f"{message.author.name}: mesaj alındı, 1 dakika sayacı sıfırlandı.")
+
+@client.event
+async def on_ready():
+    print("=========================================")
+    print(f"🤖 Bağlantı başarılı: {client.user}")
+    print(f"🎯 Takip edilen ID'ler: {sorted(HEDEF_KULLANICILAR)}")
+    print(f"📢 Bildirim kanalı: {BILDIRIM_KANALI_ID}")
+    print("=========================================")
+
+@client.event
+async def on_message(message):
+    if client.user and message.author.id == client.user.id:
+        return
+    await hedef_mesaji(message)
+
+@client.event
+async def on_message_edit(before, after):
+    if client.user and after.author.id == client.user.id:
+        return
+    await hedef_mesaji(after)
+
+client.run(TOKEN)
