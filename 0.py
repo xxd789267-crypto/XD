@@ -9,7 +9,7 @@ from http.server import SimpleHTTPRequestHandler, HTTPServer
 import discord
 
 
-# Render için arka plan web sunucusu
+# Render web sunucusu
 def run_dummy_server():
     port = int(os.getenv("PORT", "10000"))
     server = HTTPServer(("0.0.0.0", port), SimpleHTTPRequestHandler)
@@ -20,73 +20,61 @@ def run_dummy_server():
 threading.Thread(target=run_dummy_server, daemon=True).start()
 
 
-# Ortam değişkenleri
+# Render ortam değişkenleri
 TOKEN = os.getenv("SELF_TOKEN")
 KANAL_STR = os.getenv("SELF_BILDIRIM_KANALI", "")
 TARGET_STR = os.getenv("TARGET_ID", "")
 
 if not TOKEN:
-    print("HATA: SELF_TOKEN eksik!")
-    sys.exit(1)
+    sys.exit("HATA: SELF_TOKEN eksik!")
 
 if not KANAL_STR.isdigit():
-    print("HATA: SELF_BILDIRIM_KANALI eksik veya hatalı!")
-    sys.exit(1)
+    sys.exit("HATA: SELF_BILDIRIM_KANALI hatalı!")
 
-try:
-    BILDIRIM_KANALI_ID = int(KANAL_STR)
-    HEDEF_KULLANICILAR = {
-        int(x.strip())
-        for x in TARGET_STR.split(",")
-        if x.strip().isdigit()
-    }
-except ValueError:
-    print("HATA: ID değerleri hatalı!")
-    sys.exit(1)
+BILDIRIM_KANALI_ID = int(KANAL_STR)
+HEDEF_KULLANICILAR = {
+    int(x.strip())
+    for x in TARGET_STR.split(",")
+    if x.strip().isdigit()
+}
 
 if not HEDEF_KULLANICILAR:
-    print("HATA: TARGET_ID eksik!")
-    sys.exit(1)
+    sys.exit("HATA: TARGET_ID eksik!")
 
-
-# Discord bot ayarları
+# Mesaj içeriği intent'i
 intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
 
-# Kullanıcı başına son mesaj zamanı ve takip görevi
 son_mesaj_zamanlari = {}
 takip_gorevleri = {}
 
-SESSIZLIK_ARALIKLARI = [60, 120, 180, 240, 300]
+# Dakika cinsinden eşikler
+SESSIZLIK_DAKIKALARI = [1, 2, 3, 4, 5]
 
 
-async def sessizlik_takibi(kullanici_id, kullanici_adi):
+async def sessizlik_takibi(kullanici_id, kullanici_adi, son_mesaj_zamani):
     try:
-        kanal = client.get_channel(BILDIRIM_KANALI_ID)
+        kanal = (
+            client.get_channel(BILDIRIM_KANALI_ID)
+            or await client.fetch_channel(BILDIRIM_KANALI_ID)
+        )
 
-        if kanal is None:
-            kanal = await client.fetch_channel(BILDIRIM_KANALI_ID)
+        onceki_sure = 0
 
-        for saniye in SESSIZLIK_ARALIKLARI:
-            await asyncio.sleep(saniye - (
-                SESSIZLIK_ARALIKLARI[
-                    SESSIZLIK_ARALIKLARI.index(saniye) - 1
-                ] if saniye != 60 else 0
-            ))
+        for dakika in SESSIZLIK_DAKIKALARI:
+            bekleme = (dakika - onceki_sure) * 60
+            await asyncio.sleep(bekleme)
+            onceki_sure = dakika
 
-            # Yeni mesaj geldiyse bu görev iptal edilir.
-            # Ek kontrol, eski bir görevin bildirim göndermesini önler.
-            if kullanici_id not in son_mesaj_zamanlari:
+            # Daha yeni mesaj geldiyse bu takip sona erer.
+            if son_mesaj_zamanlari.get(kullanici_id) != son_mesaj_zamani:
                 return
 
-            gecen_sure = time.time() - son_mesaj_zamanlari[kullanici_id]
-
-            if gecen_sure < saniye:
+            gecen = time.monotonic() - son_mesaj_zamani
+            if gecen < dakika * 60:
                 return
-
-            dakika = saniye // 60
 
             await kanal.send(
                 f"🔕 **Sessizlik bildirimi**\n"
@@ -94,10 +82,12 @@ async def sessizlik_takibi(kullanici_id, kullanici_adi):
                 f"**Süre:** {dakika} dakikadır mesaj göndermiyor."
             )
 
+            print(f"{kullanici_adi}: {dakika} dakika sessiz.")
+
     except asyncio.CancelledError:
         pass
-    except Exception as e:
-        print(f"Sessizlik takibi hatası: {e}")
+    except Exception as hata:
+        print(f"Sessizlik takibi hatası: {hata}")
 
 
 async def hedef_mesaji(message):
@@ -105,30 +95,35 @@ async def hedef_mesaji(message):
         return
 
     kullanici_id = message.author.id
-    son_mesaj_zamanlari[kullanici_id] = time.time()
+    zaman = time.monotonic()
+
+    son_mesaj_zamanlari[kullanici_id] = zaman
 
     eski_gorev = takip_gorevleri.get(kullanici_id)
-
     if eski_gorev and not eski_gorev.done():
         eski_gorev.cancel()
 
     takip_gorevleri[kullanici_id] = asyncio.create_task(
-        sessizlik_takibi(kullanici_id, message.author.name)
+        sessizlik_takibi(
+            kullanici_id,
+            message.author.name,
+            zaman
+        )
     )
 
-    print(f"{message.author.name} mesaj gönderdi; sessizlik sayacı sıfırlandı.")
+    print(f"{message.author.name}: mesaj alındı, sayaç sıfırlandı.")
 
 
 @client.event
 async def on_ready():
-    print(f"Bot aktif: {client.user}")
-    print(f"Takip edilen kullanıcılar: {HEDEF_KULLANICILAR}")
+    print(f"Discord bağlantısı başarılı: {client.user}")
+    print(f"Takip edilen ID'ler: {sorted(HEDEF_KULLANICILAR)}")
     print(f"Bildirim kanalı: {BILDIRIM_KANALI_ID}")
 
 
 @client.event
 async def on_message(message):
-    if message.author.id == client.user.id:
+    if client.user and message.author.id == client.user.id:
         return
 
     await hedef_mesaji(message)
@@ -136,7 +131,7 @@ async def on_message(message):
 
 @client.event
 async def on_message_edit(before, after):
-    if after.author.id == client.user.id:
+    if client.user and after.author.id == client.user.id:
         return
 
     await hedef_mesaji(after)
