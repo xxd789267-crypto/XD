@@ -39,21 +39,17 @@ HEDEF_KULLANICILAR = {
 if not HEDEF_KULLANICILAR:
     sys.exit("❌ HATA: TARGET_ID eksik!")
 
-intents = discord.Intents.default()
-intents.message_content = True
-client = discord.Client(intents=intents)
+client = discord.Client()   # ← Intents yok, selfbot için böyle
 
-# Kullanıcı bazlı son mesaj zamanı ve aktif takip görevi
 son_mesaj_zamanlari = {}
 takip_gorevleri = {}
 
-SESSIZLIK_SURESI = 60  # 1 dakika (saniye cinsinden)
+SESSIZLIK_SURESI = 60  # 1 dakika
 
 async def sessizlik_takibi(kullanici_id, kullanici_adi, son_mesaj_zamani):
     try:
         await asyncio.sleep(SESSIZLIK_SURESI)
 
-        # Bu süre içinde yeni mesaj geldiyse takip iptal olur
         if son_mesaj_zamanlari.get(kullanici_id) != son_mesaj_zamani:
             return
 
@@ -82,12 +78,10 @@ async def hedef_mesaji(message):
     zaman = time.monotonic()
     son_mesaj_zamanlari[kullanici_id] = zaman
 
-    # Eski takip görevini iptal et
     eski_gorev = takip_gorevleri.get(kullanici_id)
     if eski_gorev and not eski_gorev.done():
         eski_gorev.cancel()
 
-    # Yeni 1 dakikalık takip başlat
     takip_gorevleri[kullanici_id] = asyncio.create_task(
         sessizlik_takibi(kullanici_id, message.author.name, zaman)
     )
