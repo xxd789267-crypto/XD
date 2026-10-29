@@ -39,7 +39,7 @@ HEDEF_KULLANICILAR = {
 if not HEDEF_KULLANICILAR:
     sys.exit("❌ HATA: TARGET_ID eksik!")
 
-client = discord.Client()   # ← Intents yok, selfbot için böyle
+client = discord.Client()
 
 son_mesaj_zamanlari = {}
 takip_gorevleri = {}
